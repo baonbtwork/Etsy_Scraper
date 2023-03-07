@@ -8,8 +8,7 @@ Created on Tue Nov 24 15:03:54 2020
 PATH = "chromedriver.exe"
 
 #Input the search terms you want to look up 
-# search_terms = ['nerdy greeting card', 'birthday card', 'congratulations card']
-search_terms = ['nerdy greeting card']
+search_terms = ['nerdy greeting card', 'birthday card', 'congratulations card']
 
 #Choose how many pages of each search term you want to scrape. Note that Etsy has a limit of 240 pages of search results for anything you look up, so that's the default here. 
-page_counter_limit = 2
+page_counter_limit = 240
