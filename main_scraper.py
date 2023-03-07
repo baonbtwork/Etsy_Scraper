@@ -73,7 +73,7 @@ for url in urls:
         #Implement retry loop to prevent IP block stalling 
         
         retries = 0
-        while retries <= 5:
+        while retries <= 5 and page_counter < page_counter_limit:
             
             #Wait until page loads search contents before scraping 
             
@@ -93,6 +93,7 @@ for url in urls:
             #We only want to keep first 65 links because the rest are your 'recently viewed' links 
             
             link_list = link_list[:65]
+            # link_list = link_list[:1]
             
             #Loop over links and get pertinent information
             
@@ -105,8 +106,10 @@ for url in urls:
                     
                     for x, lst in zip(appenders, mylists):
                         lst.append(x)
-                                        
-                except:
+
+                    # break
+                    # break          
+                except Exception as e:
                     break
                             
             # Get the listing containers and loop through them
@@ -123,15 +126,20 @@ for url in urls:
             record_counter += len(results)
                     
             #Loop over each listing and get its details 
-            
+            result_count = 0
             for result in results:
-                
+                result_count = result_count + 1
+                if result_count > len(count_images):
+                    break
                 try:
                     info = get_main_page(driver, result, terms[term_counter])
                     info_list = [titles, is_ad, shop_names, star_ratings, num_reviews, prices, bestseller, category]
                     
                     for x, lst in zip(info, info_list):
                         lst.append(x)
+
+                    # break
+                    # break
                 except: 
                     break
                 
@@ -153,6 +161,9 @@ for url in urls:
             except:
                 print('no next page')
                 break
+            
+            # break
+            # break
 
     #Get the total record count
     
@@ -168,10 +179,16 @@ for url in urls:
     #Add one to the term counter so the next term is scraped
     
     term_counter += 1
+    
+    # break
+    # break
 
 # Close driver 
 
-driver.quit()
+try:
+    driver.quit()
+except:
+    pass
 
 #Create a dict from our lists 
 
@@ -183,7 +200,7 @@ df = pd.DataFrame(data)
 
 #Anonymize the shop names 
 
-df['Shop_Name'] = df['Shop_Name'].astype('category').cat.codes
+# df['Shop_Name'] = df['Shop_Name'].astype('category').cat.codes
 
 #Save dataframe to a new CSV 
 

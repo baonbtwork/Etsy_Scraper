@@ -85,18 +85,18 @@ def scrape_link_details(driver,link):
           loaded = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "gnav-search")))
           
           try:
-                sales = loaded.find_elements_by_xpath("//div[starts-with(@class, 'wt-display-inline-flex-xs wt-align-items-center')]/a/span[1]")
+                sales = loaded.find_elements_by_xpath('//div[@id="listing-page-cart"]//div[contains(@class, "wt-display-inline-flex-xs")]//span[contains(text(), "sale")]')
                 s = sales[0].text
                 num_sales = s.split(" ")[0]
           except:
                 num_sales = 0
                         
           try:
-                basket = loaded.find_elements_by_xpath("//p[@class='wt-position-relative wt-text-caption']")
+                num_basket = 0
+                basket = driver.find_elements_by_xpath('//div[@data-appears-component-name="listings_nudge_incartonly"]')
                 x = basket[0].text
-                y = [int(i) for i in x.split() if i.isdigit()]
-                for i in y:
-                    num_basket = i
+                if len(x) > 0:
+                    num_basket = re.sub(r'[^0-9]', '', x)
           except:
                 num_basket = 0
             
@@ -105,21 +105,29 @@ def scrape_link_details(driver,link):
                 descriptions = description.get_attribute("content")
           except:
                 descriptions = np.nan
-            
+
+
           try:
-                arrival = loaded.find_element_by_xpath("//*[@id='shipping-variant-div']/div/div[2]/div[1]/div/div[1]/p")
-                arrival_range = arrival.text
-                start, end = parse(arrival_range)
-                average = start + (end - start)/2
-                today = datetime.date.today()
-                diff = average.date() - today
-                days_to_arrival = diff.days
+                arrivals = loaded.find_elements_by_xpath('//div[@data-appears-component-name="listing_page_estimated_delivery_date"]//button')
+
+                days_to_arrival = try_to_parse_arrival_date(arrivals)
+                
+                if days_to_arrival is None:
+                    arrivals = loaded.find_elements_by_xpath('//div[@data-appears-component-name="listing_page_estimated_delivery_date"]//p[@data-edd-absolute]')
+                    days_to_arrival = try_to_parse_arrival_date(arrivals)
+
+                if days_to_arrival is None:
+                    arrivals = loaded.find_elements_by_xpath('//div[@data-selector="listing-page-buybox-quick-delivery-content"]//span[@aria-describedby]')
+                    days_to_arrival = try_to_parse_arrival_date(arrivals)
+                    
+                if days_to_arrival is None:
+                    days_to_arrival = np.nan
           except:
                 days_to_arrival = np.nan
             
           try:
-                delivery = loaded.find_element_by_xpath("//*[contains(text(), 'Cost to deliver')]/following-sibling::p").text
-                if delivery == 'Free':
+                delivery = loaded.find_element_by_xpath("//*[contains(text(), 'Cost to deliver')]/..").text
+                if 'Free' in delivery or 'free' in delivery:
                     cost_delivery = 0
                 else:
                     match = re.search(r'\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})', delivery).group(0)
@@ -128,8 +136,11 @@ def scrape_link_details(driver,link):
                 cost_delivery = np.nan
             
           try:
-                loaded.find_element_by_xpath("//*[contains(text(), 'Accepted')]")
-                returns_accepted = 1
+                return_accepteds = loaded.find_elements_by_xpath('//div[@id="shipping-variant-div"]//span[contains(text(), "eturns")]/..')
+                if len(return_accepteds) == 0:
+                    return_accepteds = loaded.find_elements_by_xpath('//button[contains(text(), "eturns") and contains(text(), "changes")]/..')
+                if 'ccepted' in return_accepteds[0].text:
+                    returns_accepted = 1
           except:
                 returns_accepted = 0
             
@@ -166,47 +177,84 @@ def scrape_link_details(driver,link):
     
     return num_sales, num_basket, descriptions, days_to_arrival, cost_delivery, returns_accepted, dispatch_from, count_images
     
+def try_to_parse_arrival_date(arrival_elements):
+    try:
+        arrival = arrival_elements[0]
+        arrival_range = arrival.text
+        start, end = parse(arrival_range)
+        average = start + (end - start)/2
+        today = datetime.date.today()
+        diff = average.date() - today
+        return diff.days
+    except:
+        return None
+
 def get_main_page(driver, result, term):
     """Scrapes the details of the search page. This function takes 3 arguments as inputs: 1) your webdriver, 2) the location of the contents area of the Etsy search page, and 3) the search term you're currently scrubbing for. It returns 65 object lists for each of the following: 1) titles of the listings, 2) whether the listings are ads, 3) the names of the listing shops, 3) the star rating of the shops, 4) the number of reviews the shops have, 5) the prices of the objects, 6) whether the listings are bestsellers, and 7) the category of the search (which will be the term you've input)  
     """
     titles = result.find_element_by_css_selector("div > a[href]").get_attribute("title")
     
-    shop_name = result.find_element_by_css_selector("p.screen-reader-only").text
-    if shop_name[:2] == 'Ad':
-        is_ad = 1
-    else:
-        is_ad = 0
-    shop_names = shop_name.split(" ")[-1]
+    shop_name = np.nan
+    is_ad = 0
+    shop_name_elements = result.find_elements_by_xpath('.//div[contains(@class, "wt-text-caption")]/p[@aria-role]')
+    if len(shop_name_elements) > 0:
+        shop_name_element = shop_name_elements[0]
+        shop_name = shop_name_element.text
+        if shop_name is None or len(shop_name) < 2:
+            shop_names = shop_name_element.get_attribute('aria-label')
+            if shop_names is not None and len(shop_names) > 1:
+                shop_names = shop_names.split(' ')
+                shop_name = shop_names[-1]
+        if shop_name_element.is_displayed():
+            is_ad = 0
+        else:
+            is_ad = 1
+
+    # ad_text_elements = result.find_elements_by_xpath('.//div[contains(@class, "wt-text-caption")]/p[not(@aria-role) and contains(@class, "c439")]')
+
     
     try:
-        star_rating = result.find_element_by_css_selector("span.screen-reader-only").text
-        star_ratings = star_rating.split(" ")[0]
+        star_ratings = result.find_element_by_xpath('.//input[@name="rating"]').get_attribute('value')
     except:
         star_ratings = np.nan
     
     try:
-        num_review = result.find_element_by_css_selector('span.text-body-smaller.text-gray-lighter.display-inline-block.icon-b-1').text
+        num_review = result.find_element_by_xpath('.//span[contains(@class, "larger_review_stars")]/span[2]').text
         num_reviews = num_review.strip("()")
     except:
         num_reviews = 0
     
-    prices = result.find_element_by_css_selector('span.currency-value').text
+    try:
+        prices = result.find_element_by_xpath('.//span[@class="currency-value"]').text
+    except:
+        prices = np.nan
         
-    try:    
-        result.find_element_by_xpath("//span[@class='wt-badge wt-badge--small wt-badge--status-03']/span[2]")
-        bestseller = 1
+    try:
+        bestseller = np.nan
+        bestsellers = result.find_elements_by_xpath('.//span[contains(text(), "estsell")]')
+        if len(bestsellers) > 0:
+            bestseller = 1
+
+        popular_nows = result.find_elements_by_xpath('.//span[contains(text(), "opular")]')
+        if len(popular_nows) > 0:
+            bestseller = 2
+
+        star_sellers = result.find_elements_by_xpath('.//p[contains(text(), "tar Seller")]')
+        if len(star_sellers) > 0:
+            bestseller = 3
     except:
         bestseller = np.nan
     
     category = term
     
-    return titles, is_ad, shop_names, star_ratings, num_reviews, prices, bestseller, category
+    return titles, is_ad, shop_name, star_ratings, num_reviews, prices, bestseller, category
 
 def next_page(driver, page_counter):
     """Clicks on the next page of search results. Takes the webdriver and current page_counter as arguments to ensure the right next page is located.  
     """
     try:
-        page = driver.find_element_by_xpath('//a[contains(@data-page,"{}")]'.format(page_counter))
+        xpath = '//ul[contains(@class, "search-pagination")]//a[contains(@href, "n&page={page_counter}") and contains(text(), "{page_counter}")]'.format(page_counter=page_counter)
+        page = driver.find_element_by_xpath(xpath)
         next_page = page.get_attribute("href")
         
         for i in range(3): 
